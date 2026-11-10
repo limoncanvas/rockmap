@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-interface CryptoData {
+export interface CryptoData {
   symbol: string;
   name: string;
   price: number;
@@ -13,6 +13,24 @@ interface CryptoData {
   tempChange?: number;
   baseColor?: string;
 }
+
+// Generate a color based on price change, beat, and frequency
+export const getColor = (crypto: CryptoData, freqData: number[], beatIntensity: number) => {
+  // Deterministic mapping to frequency bands based on crypto symbol with safe guard for empty array
+  const freqIndex = freqData.length > 0 ? Math.abs(crypto.symbol.charCodeAt(0)) % freqData.length : 0;
+  const freqValue = freqData[freqIndex] || 0;
+  
+  // Binary color selection based on frequency value
+  if (freqValue > 0.5) {
+    // High frequency energy - use green
+    const intensity = Math.floor(150 + (freqValue * 105));
+    return `rgb(0, ${intensity}, 0)`;
+  } else {
+    // Low frequency energy - use red
+    const intensity = Math.floor(150 + ((1 - freqValue) * 105));
+    return `rgb(${intensity}, 0, 0)`;
+  }
+};
 
 const CryptoDanceVisualization = () => {
   // Comprehensive crypto data based on your image
@@ -91,6 +109,7 @@ const CryptoDanceVisualization = () => {
 
   // State for animation even without audio
   const [isPlaying, setIsPlaying] = useState(false);
+  const isPlayingRef = useRef(false);
   const audioContext = useRef<AudioContext | null>(null);
   const analyser = useRef<AnalyserNode | null>(null);
   const dataArray = useRef<Uint8Array | null>(null);
@@ -124,7 +143,7 @@ const CryptoDanceVisualization = () => {
   // Simulated beat for demo without audio
   useEffect(() => {
     const simulateBeat = () => {
-      if (!audioContext.current && isPlaying) {
+      if (isPlaying && (!audioElement.current || !audioSource.current)) {
         // Create a pulsing beat effect
         simulatedBeatRef.current += 0.1;
         const sinValue = Math.sin(simulatedBeatRef.current);
@@ -132,8 +151,8 @@ const CryptoDanceVisualization = () => {
         
         // Add some randomness for more natural feel
         const randomFactor = Math.random() * 0.3;
-        const beatIntensity = beatValue + randomFactor > 1 ? 1 : beatValue + randomFactor;
-        setBeatIntensity(beatIntensity);
+        const currentBeatIntensity = beatValue + randomFactor > 1 ? 1 : beatValue + randomFactor;
+        setBeatIntensity(currentBeatIntensity);
         
         // Create simulated frequency data with more variation
         const simulatedFreqs = Array(32).fill(0).map((_, i) => {
@@ -144,24 +163,24 @@ const CryptoDanceVisualization = () => {
         
         // Update crypto data with new animations based on the beat
         setCryptoData(prevData => 
-          prevData.map((crypto, index) => {
+          prevData.map((crypto) => {
             // Generate color based on the beat intensity
             let baseColor;
-            if (beatIntensity > 0.1) {
+            if (currentBeatIntensity > 0.1) {
               // Strong beat - bright green
-              const greenIntensity = Math.floor(255 * beatIntensity);
+              const greenIntensity = Math.floor(255 * currentBeatIntensity);
               baseColor = `rgb(0, ${greenIntensity}, 0)`;
             } else {
               // Weak beat - bright red
-              const redIntensity = Math.floor(255 * (1 - beatIntensity));
+              const redIntensity = Math.floor(255 * (1 - currentBeatIntensity));
               baseColor = `rgb(${redIntensity}, 0, 0)`;
             }
             
             return {
               ...crypto,
-              animScale: 1 + (beatIntensity * 0.5),
-              animRotate: (Math.random() * 2 - 1) * beatIntensity * 10,
-              tempChange: crypto.change + (beatIntensity * 2 - 1) * 5,
+              animScale: 1 + (currentBeatIntensity * 0.5),
+              animRotate: (Math.random() * 2 - 1) * currentBeatIntensity * 10,
+              tempChange: crypto.change + (currentBeatIntensity * 2 - 1) * 5,
               baseColor
             };
           })
@@ -171,7 +190,7 @@ const CryptoDanceVisualization = () => {
       }
     };
     
-    if (isPlaying && !audioContext.current) {
+    if (isPlaying && (!audioElement.current || !audioSource.current)) {
       simulateBeat();
     }
     
@@ -213,14 +232,21 @@ const CryptoDanceVisualization = () => {
   }, []);
 
   // Set up audio connections and start analyzing
-  const startAudio = () => {
-    if (!audioElement.current || !audioContext.current || isPlaying) return;
+  const startAudio = (force = false) => {
+    if (isPlayingRef.current && !force) return;
+
+    // If no custom audio element is uploaded, run in simulated visualization mode
+    if (!audioElement.current) {
+      isPlayingRef.current = true;
+      setIsPlaying(true);
+      return;
+    }
 
     try {
-      // Create new AudioContext if it's closed
-      if (audioContext.current.state === 'closed') {
-        const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-        audioContext.current = new AudioContext();
+      // Create new AudioContext if it doesn't exist or is closed
+      if (!audioContext.current || audioContext.current.state === 'closed') {
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        audioContext.current = new AudioContextClass();
         analyser.current = audioContext.current.createAnalyser();
         analyser.current.fftSize = 64;
         const bufferLength = analyser.current.frequencyBinCount;
@@ -231,45 +257,44 @@ const CryptoDanceVisualization = () => {
       if (audioContext.current.state === 'suspended') {
         audioContext.current.resume();
       }
-      
-      // Disconnect and clean up previous source if it exists
-      if (audioSource.current) {
-        audioSource.current.disconnect();
-        audioSource.current = null;
+
+      // Re-use existing audio source if already created for this audioElement.
+      // HTMLMediaElement cannot be passed to createMediaElementSource more than once.
+      if (!audioSource.current) {
+        audioSource.current = audioContext.current.createMediaElementSource(audioElement.current);
+        audioSource.current.connect(analyser.current!);
+        analyser.current!.connect(audioContext.current.destination);
       }
-      
-      // Create new source and connect it
-      audioSource.current = audioContext.current.createMediaElementSource(audioElement.current);
-      audioSource.current.connect(analyser.current!);
-      analyser.current!.connect(audioContext.current.destination);
-      
+
       // Start playing the audio
       audioElement.current.play().catch(error => {
         console.log("Audio play error:", error);
         // Fall back to simulated beats
+        isPlayingRef.current = true;
         setIsPlaying(true);
       });
-      
+
+      isPlayingRef.current = true;
       setIsPlaying(true);
       analyzeAudio();
     } catch (error) {
       console.log("Audio setup error:", error);
       // Fall back to simulated beats
+      isPlayingRef.current = true;
       setIsPlaying(true);
     }
   };
 
   // Toggle audio playback
   const toggleAudio = () => {
-    if (isPlaying) {
+    if (isPlayingRef.current) {
+      isPlayingRef.current = false;
       setIsPlaying(false);
       if (audioElement.current) {
         audioElement.current.pause();
       }
-      if (audioSource.current) {
-        audioSource.current.disconnect();
-        audioSource.current = null;
-      }
+      // Note: Preserve audioSource.current across pause/resume cycles.
+      // Calling disconnect() and nulling audioSource causes InvalidStateError on subsequent play.
       if (animationFrameId.current) {
         cancelAnimationFrame(animationFrameId.current);
       }
@@ -294,36 +319,23 @@ const CryptoDanceVisualization = () => {
       if (animationFrameId.current) {
         cancelAnimationFrame(animationFrameId.current);
       }
-      
+
       // Create new audio element
       const url = URL.createObjectURL(file);
       audioElement.current = new Audio(url);
       audioElement.current.onended = () => {
+        isPlayingRef.current = false;
         setIsPlaying(false);
         if (animationFrameId.current) {
           cancelAnimationFrame(animationFrameId.current);
         }
       };
+
+      // Automatically start visualization with the newly uploaded track
+      startAudio(true);
     }
   };
 
-  // Generate a color based on price change, beat, and frequency
-  const getColor = (crypto: CryptoData, freqData: number[], beatIntensity: number) => {
-    // Deterministic mapping to frequency bands based on crypto symbol
-    const freqIndex = Math.abs(crypto.symbol.charCodeAt(0)) % freqData.length;
-    const freqValue = freqData[freqIndex] || 0;
-    
-    // Binary color selection based on frequency value
-    if (freqValue > 0.5) {
-      // High frequency energy - use green
-      const intensity = Math.floor(150 + (freqValue * 105));
-      return `rgb(0, ${intensity}, 0)`;
-    } else {
-      // Low frequency energy - use red
-      const intensity = Math.floor(150 + ((1 - freqValue) * 105));
-      return `rgb(${intensity}, 0, 0)`;
-    }
-  };
 
   return (
     <div className="fixed inset-0 bg-gray-900 overflow-hidden">
