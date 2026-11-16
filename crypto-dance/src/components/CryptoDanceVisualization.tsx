@@ -1,4 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
+// Prices >= 1 keep two decimals and sub-dollar prices keep up to 8 decimals (SHIB at 0.00001637 would otherwise render as "$0").
+
+export function formatPrice(price: number): string {
+  if (price >= 1) return price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return price.toLocaleString(undefined, { maximumFractionDigits: 8 });
+}
 
 interface CryptoData {
   symbol: string;
@@ -375,7 +381,7 @@ const CryptoDanceVisualization = () => {
                     }}
                   >
                     <div className="text-white font-bold text-6xl">{crypto.symbol}</div>
-                    <div className="text-white text-2xl">${crypto.price.toLocaleString()}</div>
+                    <div className="text-white text-2xl">${formatPrice(crypto.price)}</div>
                     <div className={crypto.change > 0 ? "text-green-300 text-xl" : "text-red-300 text-xl"}>
                       ▼ {crypto.change}%
                     </div>
@@ -409,7 +415,7 @@ const CryptoDanceVisualization = () => {
                       }}
                     >
                       <div className="text-white font-bold text-4xl">{crypto.symbol}</div>
-                      <div className="text-white text-xl">${crypto.price.toLocaleString()}</div>
+                      <div className="text-white text-xl">${formatPrice(crypto.price)}</div>
                       <div className={crypto.change > 0 ? "text-green-300" : "text-red-300"}>
                         ▼ {crypto.change}%
                       </div>
@@ -437,7 +443,7 @@ const CryptoDanceVisualization = () => {
                       }}
                     >
                       <div className="text-white font-bold text-xs">{crypto.symbol}</div>
-                      <div className="text-white text-tiny">${crypto.price.toLocaleString(undefined, {maximumFractionDigits: 2})}</div>
+                      <div className="text-white text-tiny">${formatPrice(crypto.price)}</div>
                     </div>
                   );
                 })}
@@ -445,11 +451,11 @@ const CryptoDanceVisualization = () => {
             </div>
           </div>
           
-          {/* Others & Stablecoins Section */}
+          {/* Others, Stablecoins, DeFi & Meme Section */}
           <div className="col-span-3">
-            <div className="font-bold text-white text-xs mb-1 pl-1">Others & Stablecoins</div>
-            <div className="grid grid-cols-3 grid-rows-6 gap-1 h-full">
-              {cryptoData.filter(c => c.section === 'stablecoins' || c.section === 'others').map((crypto, index) => {
+            <div className="font-bold text-white text-xs mb-1 pl-1">Others, Stablecoins, DeFi & Meme</div>
+            <div className="grid grid-cols-3 auto-rows-min gap-1 h-full overflow-y-auto">
+              {cryptoData.filter(c => c.section === 'stablecoins' || c.section === 'others' || c.section === 'defi' || c.section === 'meme').map((crypto, index) => {
                 const scale = crypto.animScale || 1;
                 const rotate = crypto.animRotate || 0;
                 
@@ -466,7 +472,7 @@ const CryptoDanceVisualization = () => {
                     }}
                   >
                     <div className="text-white font-bold text-xs">{crypto.symbol}</div>
-                    <div className="text-white text-tiny">${crypto.price.toLocaleString(undefined, {maximumFractionDigits: 2})}</div>
+                    <div className="text-white text-tiny">${formatPrice(crypto.price)}</div>
                   </div>
                 );
               })}
